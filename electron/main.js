@@ -1,9 +1,8 @@
 const { app, BrowserWindow, ipcMain } = require('electron')
 const os = require('os')
 const path = require('path')
-const Hyperswarm = require('hyperswarm')
-const Corestore = require('corestore')
 const PearRuntime = require('pear-runtime')
+const FramedStream = require('framed-stream')
 
 const { isMac, isLinux, isWindows } = require('which-runtime')
 const { command, flag } = require('paparam')
@@ -11,9 +10,9 @@ const pkg = require('../package.json')
 const { name, productName, version, upgrade } = pkg
 
 const protocol = name
+const mainWorkerSpecifier = '/workers/main.js'
 
 const workers = new Map()
-let pear = null
 
 const appName = productName ?? name
 
@@ -35,8 +34,21 @@ ipcMain.on('pkg', (evt) => {
   evt.returnValue = pkg
 })
 
-function getPear() {
-  if (pear) return pear
+function getAppPath() {
+  if (!app.isPackaged) return null
+  if (isLinux && process.env.APPIMAGE) return process.env.APPIMAGE
+  if (isWindows) return process.execPath
+  return path.join(process.resourcesPath, '..', '..')
+}
+
+function sendToAll(name, data) {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send(name, data)
+  }
+}
+
+function getWorker(specifier) {
+  if (workers.has(specifier)) return workers.get(specifier)
   const appPath = getAppPath()
   let dir = null
   if (pearStore) {
@@ -53,50 +65,21 @@ function getPear() {
         ? isSnap
           ? path.join(process.env.SNAP_USER_COMMON, appName)
           : path.join(linuxConfigHome, appName)
-        : path.join(os.homedir(), 'AppData', 'Local', appName)
+        : path.join(os.homedir(), 'AppData', 'Roaming', appName)
   }
 
   const extension = isLinux ? '.AppImage' : isMac ? '.app' : '.msix'
-  const store = new Corestore(path.join(dir, 'pear-runtime/corestore'))
-  const swarm = new Hyperswarm()
-  pear = new PearRuntime({
+
+  const worker = PearRuntime.run(require.resolve('..' + specifier), [
     dir,
-    app: appPath,
+    appPath,
     updates,
     version,
     upgrade,
-    name: productName + extension,
-    store,
-    swarm
-  })
-  if (updates !== false) {
-    swarm.on('connection', (connection) => store.replicate(connection))
-    swarm.join(pear.updater.drive.core.discoveryKey, {
-      client: true,
-      server: false
-    })
-  }
-  pear.on('error', console.error) // print network errors, etc.
-  return pear
-}
+    productName + extension
+  ])
+  const pipe = new FramedStream(worker)
 
-function getAppPath() {
-  if (!app.isPackaged) return null
-  if (isLinux && process.env.APPIMAGE) return process.env.APPIMAGE
-  if (isWindows) return process.execPath
-  return path.join(process.resourcesPath, '..', '..')
-}
-
-function sendToAll(name, data) {
-  for (const win of BrowserWindow.getAllWindows()) {
-    if (!win.isDestroyed()) win.webContents.send(name, data)
-  }
-}
-
-function getWorker(specifier) {
-  if (workers.has(specifier)) return workers.get(specifier)
-  const pear = getPear()
-  const worker = pear.run(require.resolve('..' + specifier), [pear.storage])
   function sendWorkerStdout(data) {
     sendToAll('pear:worker:stdout:' + specifier, data)
   }
@@ -107,26 +90,26 @@ function getWorker(specifier) {
     sendToAll('pear:worker:ipc:' + specifier, data)
   }
   function onBeforeQuit() {
-    worker.destroy()
+    pipe.destroy()
   }
   ipcMain.handle('pear:worker:writeIPC:' + specifier, (evt, data) => {
-    return worker.write(Buffer.from(data))
+    return pipe.write(data)
   })
-  workers.set(specifier, worker)
-  worker.on('data', sendWorkerIPC)
+  workers.set(specifier, pipe)
+  pipe.on('data', sendWorkerIPC)
   worker.stdout.on('data', sendWorkerStdout)
   worker.stderr.on('data', sendWorkerStderr)
   worker.once('exit', (code) => {
     app.removeListener('before-quit', onBeforeQuit)
     ipcMain.removeHandler('pear:worker:writeIPC:' + specifier)
-    worker.removeListener('data', sendWorkerIPC)
+    pipe.removeListener('data', sendWorkerIPC)
     worker.stdout.removeListener('data', sendWorkerStdout)
     worker.stderr.removeListener('data', sendWorkerStderr)
     sendToAll('pear:worker:exit:' + specifier, code)
     workers.delete(specifier)
   })
   app.on('before-quit', onBeforeQuit)
-  return worker
+  return pipe
 }
 
 async function createWindow() {
@@ -141,24 +124,6 @@ async function createWindow() {
     }
   })
 
-  const pear = getPear()
-
-  const onUpdating = () => {
-    if (!win.isDestroyed()) win.webContents.send('pear:event:updating')
-  }
-
-  const onUpdated = () => {
-    if (!win.isDestroyed()) win.webContents.send('pear:event:updated')
-  }
-
-  pear.updater.on('updating', onUpdating)
-  pear.updater.on('updated', onUpdated)
-
-  win.on('closed', () => {
-    pear.updater.removeListener('updating', onUpdating)
-    pear.updater.removeListener('updated', onUpdated)
-  })
-
   const devServerUrl = process.env.PEAR_DEV_SERVER_URL
 
   if (devServerUrl) {
@@ -171,8 +136,21 @@ async function createWindow() {
 }
 
 ipcMain.handle('pear:applyUpdate', () => {
-  const pear = getPear()
-  pear.updater.applyUpdate()
+  const pipe = getWorker(mainWorkerSpecifier)
+
+  return new Promise((resolve, reject) => {
+    function onData(data) {
+      const message = data.toString()
+
+      if (message === 'pear:updateApplied') {
+        pipe.removeListener('data', onData)
+        resolve()
+      }
+    }
+
+    pipe.on('data', onData)
+    pipe.write('pear:applyUpdate')
+  })
 })
 ipcMain.handle('pear:startWorker', (evt, filename) => {
   getWorker(filename)
@@ -190,7 +168,7 @@ ipcMain.handle('app:afterUpdate', () => {
   } else if (!isWindows) {
     app.relaunch()
   }
-  app.exit(0)
+  app.quit()
 })
 
 function handleDeepLink(url) {
