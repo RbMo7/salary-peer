@@ -1,6 +1,7 @@
 const bridge = window.bridge
 const decoder = new TextDecoder('utf-8')
 const WORKER = '/workers/main.js'
+let discoveryKey = null
 
 const $ = (id) => document.getElementById(id)
 
@@ -76,6 +77,7 @@ bridge.onWorkerIPC(WORKER, (data) => {
 
   if (msg.type === 'ready') {
     $('channel-key').textContent = msg.key
+    discoveryKey = msg.discoveryKey
     showScreen('main')
     if (!msg.writable) {
       $('submit-btn').disabled = true
@@ -142,6 +144,16 @@ $('submit-btn').onclick = () => {
   }
 
   sendCmd({ type: 'submit', data: { role, level, location, salary: Number(salary), currency } })
+}
+
+// Copy relay command
+$('relay-btn').onclick = () => {
+  if (!discoveryKey) return
+  const cmd = 'node relay/index.js ' + discoveryKey
+  navigator.clipboard.writeText(cmd).then(() => {
+    $('relay-btn').textContent = 'Copied!'
+    setTimeout(() => { $('relay-btn').textContent = 'Relay' }, 2000)
+  })
 }
 
 // Copy key

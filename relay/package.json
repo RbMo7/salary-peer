@@ -1,0 +1,10 @@
+{
+  "name": "salarypeer-relay",
+  "version": "1.0.0",
+  "description": "Blind relay for SalaryPeer — stores encrypted blocks, reads nothing",
+  "main": "index.js",
+  "dependencies": {
+    "corestore": "^7.9.1",
+    "hyperswarm": "^4.17.0"
+  }
+}

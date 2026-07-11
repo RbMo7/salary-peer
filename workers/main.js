@@ -120,8 +120,25 @@ async function start (bootstrapKey) {
 
   const bootstrap = bootstrapKey ? Buffer.from(bootstrapKey, 'hex') : null
 
-  base = new Autobase(store, bootstrap, { open, apply, valueEncoding: 'json' })
+  // encryptionKey is derived from the base key (bootstrap for joiners, generated for creators)
+  // relay never has the base key so can't derive this — blind by design
+  const encryptionKey = bootstrap
+    ? crypto.hash(Buffer.concat([bootstrap, Buffer.from('salarypeer/enc/v1')]))
+    : null  // creators: set after first ready() below
+
+  base = new Autobase(store, bootstrap, {
+    open, apply, valueEncoding: 'json',
+    ...(encryptionKey ? { encryptionKey } : {})
+  })
   await base.ready()
+
+  // creator: now we have base.key — reinit with encryption
+  if (!bootstrap) {
+    const key = crypto.hash(Buffer.concat([base.key, Buffer.from('salarypeer/enc/v1')]))
+    await base.close()
+    base = new Autobase(store, base.key, { open, apply, valueEncoding: 'json', encryptionKey: key })
+    await base.ready()
+  }
 
   swarm.on('connection', (conn) => {
     const stream = store.replicate(conn)
@@ -138,7 +155,12 @@ async function start (bootstrapKey) {
     await base.append({ type: 'addWriter', key: base.local.key.toString('hex') })
   }
 
-  send({ type: 'ready', key: base.key.toString('hex'), writable: base.writable })
+  send({
+    type: 'ready',
+    key: base.key.toString('hex'),
+    discoveryKey: base.discoveryKey.toString('hex'),
+    writable: base.writable
+  })
   console.log('Salary worker started. Key:', base.key.toString('hex'))
 
   // joiners: retry writable check after peers process the addWriter
