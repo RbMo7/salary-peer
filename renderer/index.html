@@ -2,47 +2,263 @@
 <html>
   <head>
     <meta charset="UTF-8" />
-    <title>Hello Pear</title>
+    <title>SalaryPeer</title>
     <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
       body {
-        font-family:
-          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
-        margin: 0;
-        background: linear-gradient(135deg, #21c437 0%, #0e4f15 100%);
-        color: white;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        background: #0f0f0f;
+        color: #e0e0e0;
+        min-height: 100vh;
       }
-      h1 {
-        font-size: 48px;
-        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
-      }
-      #update-btn {
-        display: none;
-        margin-top: 20px;
+      .screen { display: none; padding: 40px; max-width: 640px; margin: 0 auto; }
+      .screen.active { display: block; }
+      h1 { font-size: 28px; margin-bottom: 8px; color: #fff; }
+      .subtitle { color: #888; font-size: 14px; margin-bottom: 32px; }
+      .btn {
         padding: 12px 24px;
-        font-size: 18px;
-        border: 2px solid white;
+        font-size: 15px;
+        border: none;
         border-radius: 8px;
-        background: green;
-        color: white;
         cursor: pointer;
+        font-weight: 600;
+        transition: opacity 0.2s;
       }
-      #update-btn:hover {
-        background: greenyellow;
+      .btn:hover { opacity: 0.85; }
+      .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+      .btn-primary { background: #22c55e; color: #000; }
+      .btn-secondary { background: #262626; color: #e0e0e0; border: 1px solid #333; }
+      .landing-actions { display: flex; flex-direction: column; gap: 12px; }
+      input, select {
+        width: 100%;
+        padding: 10px 14px;
+        font-size: 15px;
+        border: 1px solid #333;
+        border-radius: 8px;
+        background: #1a1a1a;
+        color: #e0e0e0;
+        outline: none;
       }
-      .container {
+      input:focus, select:focus { border-color: #22c55e; }
+      .field { margin-bottom: 16px; }
+      .field label { display: block; font-size: 13px; color: #888; margin-bottom: 6px; }
+      .join-row { display: flex; gap: 8px; }
+      .join-row input { flex: 1; }
+      .divider { text-align: center; color: #555; font-size: 13px; padding: 8px 0; }
+
+      .key-box {
+        background: #1a1a1a;
+        border: 1px solid #333;
+        border-radius: 8px;
+        padding: 14px;
+        font-family: monospace;
+        font-size: 13px;
+        word-break: break-all;
+        margin-bottom: 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+      }
+      .key-box span { flex: 1; }
+      .copied { color: #22c55e; font-size: 12px; }
+
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        margin-bottom: 24px;
+      }
+      .stat-card {
+        background: #1a1a1a;
+        border: 1px solid #262626;
+        border-radius: 10px;
+        padding: 16px;
         text-align: center;
       }
+      .stat-card .value { font-size: 24px; font-weight: 700; color: #22c55e; }
+      .stat-card .label { font-size: 12px; color: #888; margin-top: 4px; }
+      .stat-wide { grid-column: span 3; }
+
+      .section-title { font-size: 16px; font-weight: 600; margin: 24px 0 12px; color: #fff; }
+      .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+      .privacy-note {
+        background: #1a1a1a;
+        border: 1px solid #262626;
+        border-radius: 8px;
+        padding: 14px;
+        font-size: 13px;
+        color: #888;
+        margin-bottom: 24px;
+        line-height: 1.5;
+      }
+      .status { font-size: 13px; color: #888; margin-top: 16px; text-align: center; }
+      .status.error { color: #ef4444; }
+      .status.success { color: #22c55e; }
+      .min-entries-warning {
+        text-align: center;
+        color: #f59e0b;
+        padding: 20px;
+        font-size: 14px;
+      }
+      .peers-badge {
+        display: inline-block;
+        font-size: 12px;
+        color: #888;
+        margin-left: 8px;
+      }
+      .filter-row {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+      }
+      .filter-row select { width: auto; min-width: 120px; flex: 1; }
     </style>
   </head>
   <body>
-    <div class="container">
-      <h1 id="v">v</h1>
-      <button id="update-btn">Apply update</button>
+    <!-- Landing Screen -->
+    <div id="landing" class="screen active">
+      <h1>SalaryPeer</h1>
+      <p class="subtitle">Anonymous P2P salary transparency. No servers. No accounts.</p>
+      <div class="privacy-note">
+        Your data never touches a server. Salaries are shared directly between peers
+        via encrypted P2P connections. No one — not even the app creators — can see who
+        submitted what.
+      </div>
+      <div class="landing-actions">
+        <button class="btn btn-primary" id="create-btn">Create New Channel</button>
+        <div class="divider">— or join an existing one —</div>
+        <div class="join-row">
+          <input type="text" id="join-key" placeholder="Paste channel key here..." />
+          <button class="btn btn-secondary" id="join-btn">Join</button>
+        </div>
+      </div>
+      <div id="landing-status" class="status"></div>
     </div>
+
+    <!-- Main Screen -->
+    <div id="main" class="screen">
+      <h1>SalaryPeer <span class="peers-badge" id="peers-badge"></span></h1>
+
+      <div class="key-box">
+        <span id="channel-key"></span>
+        <button class="btn btn-secondary" id="copy-btn" style="padding:6px 14px;font-size:13px">Copy</button>
+      </div>
+
+      <!-- Stats -->
+      <div class="section-title">Compensation Stats</div>
+      <div class="filter-row">
+        <select id="filter-role"><option value="">All Roles</option></select>
+        <select id="filter-level"><option value="">All Levels</option></select>
+        <select id="filter-location"><option value="">All Locations</option></select>
+        <select id="filter-currency"><option value="">All Currencies</option></select>
+        <button class="btn btn-secondary" id="filter-btn" style="padding:6px 14px;font-size:13px">Filter</button>
+      </div>
+      <div id="stats-container">
+        <div class="min-entries-warning">Waiting for data...</div>
+      </div>
+
+      <!-- Submit Form -->
+      <div class="section-title">Submit Your Salary (Anonymous)</div>
+      <div class="form-row">
+        <div class="field">
+          <label>Role / Job Title</label>
+          <input type="text" id="f-role" placeholder="e.g. Software Engineer" />
+        </div>
+        <div class="field">
+          <label>Level</label>
+          <select id="f-level">
+            <option value="Junior">Junior</option>
+            <option value="Mid">Mid</option>
+            <option value="Senior" selected>Senior</option>
+            <option value="Staff">Staff</option>
+            <option value="Principal">Principal</option>
+            <option value="Manager">Manager</option>
+            <option value="Director">Director</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label>Location</label>
+          <input type="text" id="f-location" placeholder="e.g. Berlin, Germany" />
+        </div>
+        <div class="field">
+          <label>Currency</label>
+          <select id="f-currency">
+            <option value="USD">USD - US Dollar</option>
+            <option value="EUR">EUR - Euro</option>
+            <option value="GBP">GBP - British Pound</option>
+            <option value="INR">INR - Indian Rupee</option>
+            <option value="CAD">CAD - Canadian Dollar</option>
+            <option value="AUD">AUD - Australian Dollar</option>
+            <option value="JPY">JPY - Japanese Yen</option>
+            <option value="CHF">CHF - Swiss Franc</option>
+            <option value="CNY">CNY - Chinese Yuan</option>
+            <option value="HKD">HKD - Hong Kong Dollar</option>
+            <option value="SGD">SGD - Singapore Dollar</option>
+            <option value="SEK">SEK - Swedish Krona</option>
+            <option value="NOK">NOK - Norwegian Krone</option>
+            <option value="DKK">DKK - Danish Krone</option>
+            <option value="NZD">NZD - New Zealand Dollar</option>
+            <option value="ZAR">ZAR - South African Rand</option>
+            <option value="MXN">MXN - Mexican Peso</option>
+            <option value="BRL">BRL - Brazilian Real</option>
+            <option value="ARS">ARS - Argentine Peso</option>
+            <option value="CLP">CLP - Chilean Peso</option>
+            <option value="COP">COP - Colombian Peso</option>
+            <option value="PEN">PEN - Peruvian Sol</option>
+            <option value="KRW">KRW - South Korean Won</option>
+            <option value="TWD">TWD - Taiwan Dollar</option>
+            <option value="THB">THB - Thai Baht</option>
+            <option value="MYR">MYR - Malaysian Ringgit</option>
+            <option value="IDR">IDR - Indonesian Rupiah</option>
+            <option value="PHP">PHP - Philippine Peso</option>
+            <option value="VND">VND - Vietnamese Dong</option>
+            <option value="PKR">PKR - Pakistani Rupee</option>
+            <option value="BDT">BDT - Bangladeshi Taka</option>
+            <option value="LKR">LKR - Sri Lankan Rupee</option>
+            <option value="NPR">NPR - Nepalese Rupee</option>
+            <option value="AED">AED - UAE Dirham</option>
+            <option value="SAR">SAR - Saudi Riyal</option>
+            <option value="QAR">QAR - Qatari Riyal</option>
+            <option value="KWD">KWD - Kuwaiti Dinar</option>
+            <option value="BHD">BHD - Bahraini Dinar</option>
+            <option value="OMR">OMR - Omani Rial</option>
+            <option value="EGP">EGP - Egyptian Pound</option>
+            <option value="NGN">NGN - Nigerian Naira</option>
+            <option value="KES">KES - Kenyan Shilling</option>
+            <option value="GHS">GHS - Ghanaian Cedi</option>
+            <option value="TZS">TZS - Tanzanian Shilling</option>
+            <option value="UGX">UGX - Ugandan Shilling</option>
+            <option value="MAD">MAD - Moroccan Dirham</option>
+            <option value="TRY">TRY - Turkish Lira</option>
+            <option value="PLN">PLN - Polish Zloty</option>
+            <option value="CZK">CZK - Czech Koruna</option>
+            <option value="HUF">HUF - Hungarian Forint</option>
+            <option value="RON">RON - Romanian Leu</option>
+            <option value="BGN">BGN - Bulgarian Lev</option>
+            <option value="HRK">HRK - Croatian Kuna</option>
+            <option value="RSD">RSD - Serbian Dinar</option>
+            <option value="UAH">UAH - Ukrainian Hryvnia</option>
+            <option value="RUB">RUB - Russian Ruble</option>
+            <option value="GEL">GEL - Georgian Lari</option>
+            <option value="ILS">ILS - Israeli Shekel</option>
+            <option value="JOD">JOD - Jordanian Dinar</option>
+            <option value="ISK">ISK - Icelandic Krona</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Annual Salary (base)</label>
+        <input type="number" id="f-salary" placeholder="e.g. 95000" />
+      </div>
+      <button class="btn btn-primary" id="submit-btn" style="width:100%">Submit Anonymously</button>
+      <div id="submit-status" class="status"></div>
+    </div>
+
     <script type="module" src="app.js"></script>
   </body>
 </html>
