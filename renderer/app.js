@@ -77,7 +77,14 @@ bridge.onWorkerIPC(WORKER, (data) => {
   if (msg.type === 'ready') {
     $('channel-key').textContent = msg.key
     showScreen('main')
+    if (!msg.writable) {
+      $('submit-btn').disabled = true
+      $('submit-btn').textContent = 'Connecting to peers...'
+    }
     sendCmd({ type: 'getStats', filters: {} })
+  } else if (msg.type === 'writable') {
+    $('submit-btn').disabled = false
+    $('submit-btn').textContent = 'Submit Anonymously'
   } else if (msg.type === 'stats') {
     renderStats(msg.data)
   } else if (msg.type === 'submitted') {

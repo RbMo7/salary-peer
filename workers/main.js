@@ -2,6 +2,8 @@ const Hyperswarm = require('hyperswarm')
 const Corestore = require('corestore')
 const Autobase = require('autobase')
 const Hyperbee = require('hyperbee')
+const Protomux = require('protomux')
+const c = require('compact-encoding')
 const FramedStream = require('framed-stream')
 const goodbye = require('graceful-goodbye')
 const crypto = require('hypercore-crypto')
@@ -88,6 +90,29 @@ async function getStats (filters) {
   })
 }
 
+function setupWriterExchange (conn) {
+  const mux = Protomux.from(conn)
+  const channel = mux.createChannel({ protocol: 'salarypeer/writer-exchange' })
+  const writerMsg = channel.addMessage({
+    encoding: c.string,
+    async onmessage (key) {
+      // ponytail: if we're an indexer, add the requesting peer as a writer
+      if (base && base.writable) {
+        try {
+          await base.append({ type: 'addWriter', key })
+          console.log('Added writer:', key.slice(0, 8) + '...')
+        } catch {}
+      }
+    }
+  })
+  channel.open()
+
+  // announce our writer key to the peer
+  if (base && base.local) {
+    writerMsg.send(base.local.key.toString('hex'))
+  }
+}
+
 async function start (bootstrapKey) {
   store = new Corestore(path.join(dir, 'salary-store'))
   swarm = new Hyperswarm()
@@ -97,17 +122,35 @@ async function start (bootstrapKey) {
   base = new Autobase(store, bootstrap, { open, apply, valueEncoding: 'json' })
   await base.ready()
 
-  swarm.on('connection', (conn) => store.replicate(conn))
+  swarm.on('connection', (conn) => {
+    store.replicate(conn)
+    setupWriterExchange(conn)
+  })
 
   swarm.join(base.discoveryKey)
   await swarm.flush()
 
-  if (base.writable) {
+  // creator adds self as first writer/indexer
+  if (base.writable && !bootstrap) {
     await base.append({ type: 'addWriter', key: base.local.key.toString('hex') })
   }
 
   send({ type: 'ready', key: base.key.toString('hex'), writable: base.writable })
   console.log('Salary worker started. Key:', base.key.toString('hex'))
+
+  // joiners: retry writable check after peers process the addWriter
+  if (bootstrap && !base.writable) {
+    const checkWritable = setInterval(async () => {
+      try {
+        await base.update()
+        if (base.writable) {
+          clearInterval(checkWritable)
+          send({ type: 'writable' })
+          console.log('Now writable!')
+        }
+      } catch {}
+    }, 3000)
+  }
 }
 
 console.log('Salary worker pipe ready, waiting for commands...')
