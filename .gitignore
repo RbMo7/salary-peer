@@ -1,3 +1,7 @@
-out/
 node_modules/
-todo
+dist/
+out/
+.DS_Store
+*.log
+npm-debug.log*
+
