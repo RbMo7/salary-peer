@@ -12,6 +12,7 @@ console.log('Salary worker loading...')
 const pipe = new FramedStream(Bare.IPC)
 
 const argv = (i) => Bare.argv[i + 2]
+// argv: [updates, version, upgrade, name, dir, appPath] — passed from electron/main.js
 const dir = argv(4) || path.join(require('bare-storage').persistent(), 'salary-tool')
 
 let base = null
@@ -77,6 +78,7 @@ async function getStats (filters) {
   const min = salaries[0]
   const max = salaries[count - 1]
 
+  // ponytail: no percentile until caller provides their own salary to compare
   const roles = [...new Set(entries.map(e => e.role))]
   const levels = [...new Set(entries.map(e => e.level))]
   const locations = [...new Set(entries.map(e => e.location))]
@@ -102,6 +104,9 @@ async function start (bootstrapKey) {
   swarm.join(base.discoveryKey)
   await swarm.flush()
 
+  // ponytail: auto-add self as writer via append. the creator (indexer) processes it in apply().
+  // new joiners won't be writable until an indexer adds them — they append the request,
+  // the indexer sees it during replication and processes it.
   if (base.writable) {
     await base.append({ type: 'addWriter', key: base.local.key.toString('hex') })
   }
@@ -140,7 +145,6 @@ pipe.on('data', async (data) => {
       if (base) send({ type: 'key', key: base.key.toString('hex') })
     }
   } catch (err) {
-    console.error('Worker error:', err)
     send({ type: 'error', msg: err.message })
   }
 })
