@@ -2,7 +2,6 @@ const Hyperswarm = require('hyperswarm')
 const Corestore = require('corestore')
 const Autobase = require('autobase')
 const Hyperbee = require('hyperbee')
-const Protomux = require('protomux')
 const c = require('compact-encoding')
 const FramedStream = require('framed-stream')
 const goodbye = require('graceful-goodbye')
@@ -90,27 +89,29 @@ async function getStats (filters) {
   })
 }
 
-function setupWriterExchange (conn) {
-  const mux = Protomux.from(conn)
-  const channel = mux.createChannel({ protocol: 'salarypeer/writer-exchange' })
-  const writerMsg = channel.addMessage({
-    encoding: c.string,
-    async onmessage (key) {
-      // ponytail: if we're an indexer, add the requesting peer as a writer
-      if (base && base.writable) {
-        try {
-          await base.append({ type: 'addWriter', key })
-          console.log('Added writer:', key.slice(0, 8) + '...')
-        } catch {}
+function setupWriterExchange (mux) {
+  const channel = mux.createChannel({
+    protocol: 'salarypeer/writer-exchange',
+    messages: [
+      {
+        encoding: c.string,
+        async onmessage (key) {
+          if (base && base.writable) {
+            try {
+              await base.append({ type: 'addWriter', key })
+              console.log('Added writer:', key.slice(0, 8) + '...')
+            } catch (e) { console.error('addWriter failed:', e.message) }
+          }
+        }
+      }
+    ],
+    onopen () {
+      if (base && base.local) {
+        channel.messages[0].send(base.local.key.toString('hex'))
       }
     }
   })
-  channel.open()
-
-  // announce our writer key to the peer
-  if (base && base.local) {
-    writerMsg.send(base.local.key.toString('hex'))
-  }
+  if (channel) channel.open()
 }
 
 async function start (bootstrapKey) {
@@ -123,8 +124,10 @@ async function start (bootstrapKey) {
   await base.ready()
 
   swarm.on('connection', (conn) => {
-    store.replicate(conn)
-    setupWriterExchange(conn)
+    const stream = store.replicate(conn)
+    stream.noiseStream.opened.then(() => {
+      setupWriterExchange(stream.noiseStream.userData)
+    }).catch(() => {})
   })
 
   swarm.join(base.discoveryKey)
